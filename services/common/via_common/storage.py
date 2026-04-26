@@ -294,10 +294,14 @@ class Storage:
 
     def _load_training_sf(self) -> pd.DataFrame:  # pragma: no cover
         query = (
-            f"SELECT TRAIN_NUMBER, SERVICE_DATE, STOP_SEQUENCE, STATION_CODE, "
-            f"TO_VARCHAR(SCHEDULED_ARRIVAL) AS SCHEDULED_ARRIVAL, "
-            f"TO_VARCHAR(ACTUAL_ARRIVAL) AS ACTUAL_ARRIVAL, "
-            f"DELAY_MINUTES "
+            f"SELECT "
+            f"TRAIN_NUMBER AS train_number, "
+            f"TO_VARCHAR(SERVICE_DATE) AS service_date, "
+            f"STOP_SEQUENCE AS stop_sequence, "
+            f"STATION_CODE AS station_code, "
+            f"TO_VARCHAR(SCHEDULED_ARRIVAL) AS scheduled_arrival, "
+            f"TO_VARCHAR(ACTUAL_ARRIVAL) AS actual_arrival, "
+            f"DELAY_MINUTES AS delay_minutes "
             f"FROM {settings.SNOWFLAKE_SCHEMA_RAW}.STOP_OBSERVATIONS"
         )
         logger.info(
@@ -307,8 +311,13 @@ class Storage:
         with self._snowflake() as conn:
             df = pd.read_sql(query, conn)
         if not df.empty:
-            df["SCHEDULED_ARRIVAL"] = pd.to_datetime(df["SCHEDULED_ARRIVAL"], errors="coerce")
-            df["ACTUAL_ARRIVAL"] = pd.to_datetime(df["ACTUAL_ARRIVAL"], errors="coerce")
+            # Be defensive: Snowflake/pandas can surface unexpected column casing depending
+            # on connector + query shape.
+            df.columns = [str(c).lower() for c in df.columns]
+            if "scheduled_arrival" in df.columns:
+                df["scheduled_arrival"] = pd.to_datetime(df["scheduled_arrival"], errors="coerce")
+            if "actual_arrival" in df.columns:
+                df["actual_arrival"] = pd.to_datetime(df["actual_arrival"], errors="coerce")
         logger.info(
             "Snowflake read done: resource=%s rows=%s",
             SF_STOP_OBSERVATIONS_RESOURCE,
@@ -361,7 +370,7 @@ class Storage:
                         f"""
                         INSERT INTO {settings.SNOWFLAKE_SCHEMA_MART}.MODEL_RUNS
                           (MODEL_ID, TRAINED_AT, ALGO, MAE, RMSE, FEATURES, ARTIFACT_URI, IS_ACTIVE)
-                        VALUES (%s, TO_TIMESTAMP_NTZ(%s), %s, %s, %s, PARSE_JSON(%s), %s, %s)
+                        SELECT %s, TO_TIMESTAMP_NTZ(%s), %s, %s, %s, PARSE_JSON(%s), %s, %s
                         """,
                         (
                             model_id,
@@ -489,6 +498,8 @@ class Storage:
             )
             with self._snowflake() as conn:
                 df = pd.read_sql(query, conn)
+            # Normalize column casing for consistent JSON keys.
+            df.columns = [str(c).lower() for c in df.columns]
             # Normalize NaNs to None for JSON serialization.
             return df.where(pd.notnull(df), None).to_dict(orient="records")
 
