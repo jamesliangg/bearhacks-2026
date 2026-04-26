@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.jobs.scheduler import build_scheduler
-from app.routers import admin, jobs, scrape
+from app.routers import admin, jobs, scrape, vault
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(scrape.router, prefix="/scrape", tags=["scrape"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
+app.include_router(vault.router, prefix="/vault", tags=["vault"])
 
 
 @app.get("/healthz")

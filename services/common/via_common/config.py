@@ -8,6 +8,13 @@ class Settings(BaseSettings):
     USE_SNOWFLAKE: bool = True
     LOCAL_SQLITE_PATH: str = "./data/via_delays.sqlite"
 
+    # Optional: fetch Snowflake PAT from Auth0 (tenant-level secret managed outside this repo).
+    AUTH0_DOMAIN: str | None = None
+    AUTH0_CLIENT_ID: str | None = None
+    AUTH0_CLIENT_SECRET: str | None = None
+    AUTH0_AUDIENCE: str | None = None
+    AUTH0_SNOWFLAKE_TOKEN_URL: str | None = None
+
     SNOWFLAKE_ACCOUNT: str | None = None
     SNOWFLAKE_USER: str | None = None
     SNOWFLAKE_PASSWORD: str | None = None

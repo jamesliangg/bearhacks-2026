@@ -18,6 +18,7 @@ from typing import Iterable
 import pandas as pd
 
 from .config import settings
+from .auth0_vault import Auth0VaultError, get_tenant_secret
 from .schemas import StopObservation
 
 
@@ -95,6 +96,13 @@ class Storage:
 
     def _init_snowflake(self) -> None:  # pragma: no cover - env specific
         import snowflake.connector  # noqa
+
+        if not settings.SNOWFLAKE_TOKEN and settings.AUTH0_SNOWFLAKE_TOKEN_URL:
+            try:
+                settings.SNOWFLAKE_TOKEN = get_tenant_secret("SNOWFLAKE_TOKEN")
+            except Auth0VaultError:
+                logger.exception("Auth0 vault enabled but failed to fetch SNOWFLAKE_TOKEN")
+                raise
 
         auth_mode = "pat" if settings.SNOWFLAKE_TOKEN else "password"
         logger.info(

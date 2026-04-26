@@ -12,6 +12,7 @@ export interface ParsedTrip {
 
 const TRAIN_RE = /\b(?:train|tr\.?|#)\s*0*(\d{1,4})\b/i;
 const HASH_TRAIN_RE = /#\s*0*(\d{1,4})\b/;
+const ALL_HASH_TRAINS_RE = /#\s*0*(\d{1,4})\b/g;
 
 function findDateInPage(): string {
   // Look for a query param ?date=YYYY-MM-DD or a visible ISO date.
@@ -45,9 +46,14 @@ export function parseTrips(root: ParentNode = document): ParsedTrip[] {
   for (const el of candidates) {
     if (seen.has(el)) continue;
     const text = el.innerText || "";
-    const m = text.match(HASH_TRAIN_RE) || text.match(TRAIN_RE);
-    if (!m) continue;
-    const trainNumber = m[1];
+    const allHashMatches = Array.from(text.matchAll(ALL_HASH_TRAINS_RE)).map(
+      (x) => x[1]
+    );
+    const trainNumber =
+      allHashMatches.length > 0
+        ? allHashMatches[allHashMatches.length - 1]
+        : (text.match(TRAIN_RE)?.[1] ?? null);
+    if (!trainNumber) continue;
     const key = `${trainNumber}|${date}`;
     if (seenKeys.has(key)) continue;
     // If the closest train header already has our badge, skip.
