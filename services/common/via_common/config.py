@@ -1,0 +1,30 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    USE_SNOWFLAKE: bool = False
+    LOCAL_SQLITE_PATH: str = "./data/via_delays.sqlite"
+
+    SNOWFLAKE_ACCOUNT: str | None = None
+    SNOWFLAKE_USER: str | None = None
+    SNOWFLAKE_PASSWORD: str | None = None
+    SNOWFLAKE_TOKEN: str | None = None
+    SNOWFLAKE_ROLE: str | None = None
+    SNOWFLAKE_WAREHOUSE: str | None = None
+    SNOWFLAKE_DATABASE: str = "VIA_DELAYS"
+    SNOWFLAKE_SCHEMA_RAW: str = "RAW"
+    SNOWFLAKE_SCHEMA_STAGING: str = "STAGING"
+    SNOWFLAKE_SCHEMA_MART: str = "MART"
+    SNOWFLAKE_MODEL_STAGE: str = "MODEL_STAGE"
+
+    MODEL_DIR: str = "./models"
+    ACTIVE_MODEL_FILE: str = "active.joblib"
+
+    SCRAPE_USER_AGENT: str = "via-delay-oracle/0.1"
+    TRANSITDOCS_BASE: str = "https://asm.transitdocs.com"
+    VIA_LIVE_BASE: str = "https://tsimobile.viarail.ca"
+
+
+settings = Settings()

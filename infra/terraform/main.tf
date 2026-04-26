@@ -420,3 +420,28 @@ resource "snowflake_table" "mart_model_runs" {
     type = "BOOLEAN"
   }
 }
+
+resource "snowflake_stage" "model_stage" {
+  name     = "MODEL_STAGE"
+  database = snowflake_database.via_delays.name
+  schema   = snowflake_schema.mart.name
+}
+
+resource "snowflake_grant_privileges_to_account_role" "service_model_stage_usage" {
+  account_role_name = snowflake_account_role.service.fully_qualified_name
+  # Internal stage doesn't support USAGE grants; grant READ/WRITE only.
+  privileges = ["READ", "WRITE"]
+
+  on_schema_object {
+    object_type = "STAGE"
+    object_name = snowflake_stage.model_stage.fully_qualified_name
+  }
+}
+
+locals {
+  # Notebook-driven training. No Snowflake stored procedure is managed by Terraform.
+  # See: infra/snowflake/notebooks/train_delay_model_notebook.py
+  _notebook_training_enabled = true
+}
+
+### No stored procedure is managed by Terraform in notebook-driven training mode.

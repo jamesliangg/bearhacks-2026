@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "via-training"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "scikit-learn>=1.4",
+  "joblib>=1.3",
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "apscheduler>=3.10",
+  "snowflake-connector-python>=3.6",
+  "via-common"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

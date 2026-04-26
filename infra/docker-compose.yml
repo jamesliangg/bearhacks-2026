@@ -1,7 +1,7 @@
 version: "3.9"
 
 x-common-env: &common-env
-  USE_SNOWFLAKE: "false"
+  USE_SNOWFLAKE: "true"
   LOCAL_SQLITE_PATH: /app/data/via_delays.sqlite
   MODEL_DIR: /app/models
   ACTIVE_MODEL_FILE: active.joblib
@@ -11,6 +11,8 @@ services:
     build:
       context: ..
       dockerfile: services/ingestion/Dockerfile
+    env_file:
+      - .env
     environment:
       <<: *common-env
     volumes:
@@ -23,6 +25,8 @@ services:
     build:
       context: ..
       dockerfile: services/training/Dockerfile
+    env_file:
+      - .env
     environment:
       <<: *common-env
     volumes:
@@ -35,6 +39,8 @@ services:
     build:
       context: ..
       dockerfile: services/prediction/Dockerfile
+    env_file:
+      - .env
     environment:
       <<: *common-env
     volumes:
