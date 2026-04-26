@@ -402,11 +402,13 @@ class Storage:
                 f"WHERE IS_ACTIVE = TRUE "
                 f"ORDER BY TRAINED_AT DESC LIMIT 1"
             )
+            logger.info("Snowflake latest active model query: %s", query)
             with self._snowflake() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query)
                     row = cur.fetchone()
             if not row:
+                logger.warning("Snowflake active_model: no rows returned")
                 return None
             return {
                 "model_id": row[0],
@@ -420,6 +422,42 @@ class Storage:
             row = conn.execute(
                 "SELECT model_id, algo, mae, rmse, features, artifact_uri "
                 "FROM model_runs WHERE is_active = 1 ORDER BY trained_at DESC LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "model_id": row[0], "algo": row[1], "mae": row[2], "rmse": row[3],
+            "features": json.loads(row[4]), "artifact_uri": row[5],
+        }
+
+    def latest_model(self) -> dict | None:
+        """Return the most recently trained model (regardless of IS_ACTIVE)."""
+        if self.use_snowflake:  # pragma: no cover - env specific
+            query = (
+                f"SELECT MODEL_ID, ALGO, MAE, RMSE, FEATURES, ARTIFACT_URI "
+                f"FROM {settings.SNOWFLAKE_SCHEMA_MART}.MODEL_RUNS "
+                f"ORDER BY TRAINED_AT DESC LIMIT 1"
+            )
+            logger.info("Snowflake latest model query: %s", query)
+            with self._snowflake() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query)
+                    row = cur.fetchone()
+            if not row:
+                logger.warning("Snowflake latest_model: no rows returned")
+                return None
+            return {
+                "model_id": row[0],
+                "algo": row[1],
+                "mae": row[2],
+                "rmse": row[3],
+                "features": json.loads(row[4]) if isinstance(row[4], str) else row[4],
+                "artifact_uri": row[5],
+            }
+        with self._sqlite() as conn:
+            row = conn.execute(
+                "SELECT model_id, algo, mae, rmse, features, artifact_uri "
+                "FROM model_runs ORDER BY trained_at DESC LIMIT 1"
             ).fetchone()
         if not row:
             return None

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     MODEL_DIR: str = "./models"
     ACTIVE_MODEL_FILE: str = "active.joblib"
+    ACTIVE_MODEL_ID: str | None = None
 
     SCRAPE_USER_AGENT: str = "via-delay-oracle/0.1"
     TRANSITDOCS_BASE: str = "https://asm.transitdocs.com"
