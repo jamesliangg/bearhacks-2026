@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sqlite3
+import math
 from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Iterable
@@ -348,8 +349,28 @@ class Storage:
 
     def recent_delay_stats(self, train_number: str, up_to: date) -> dict:
         """Rolling stats used as online features for prediction."""
-        if self.use_snowflake:  # pragma: no cover
-            return {"avg_delay_l30d": None, "avg_delay_l30d_dow": None, "n": 0}
+        if self.use_snowflake:  # pragma: no cover - env specific
+            query = (
+                f"SELECT TO_VARCHAR(SERVICE_DATE) AS service_date, MAX(DELAY_MINUTES) AS final_delay "
+                f"FROM {settings.SNOWFLAKE_SCHEMA_RAW}.STOP_OBSERVATIONS "
+                f"WHERE TRAIN_NUMBER = %s AND SERVICE_DATE < %s "
+                f"GROUP BY SERVICE_DATE "
+                f"ORDER BY SERVICE_DATE DESC "
+                f"LIMIT 30"
+            )
+            with self._snowflake() as conn:
+                df = pd.read_sql(query, conn, params=(str(train_number), str(up_to)))
+            if df.empty:
+                return {"avg_delay_l30d": None, "avg_delay_l30d_dow": None, "n": 0}
+            df.columns = [str(c).lower() for c in df.columns]
+            df["service_date"] = pd.to_datetime(df["service_date"], errors="coerce")
+            dow = pd.Timestamp(up_to).dayofweek
+            dow_mask = df["service_date"].dt.dayofweek == dow
+            return {
+                "avg_delay_l30d": float(df["final_delay"].mean()),
+                "avg_delay_l30d_dow": float(df.loc[dow_mask, "final_delay"].mean()) if dow_mask.any() else None,
+                "n": int(len(df)),
+            }
         with self._sqlite() as conn:
             df = pd.read_sql_query(
                 """
@@ -373,6 +394,76 @@ class Storage:
             "avg_delay_l30d_dow": float(df.loc[dow_mask, "final_delay"].mean()) if dow_mask.any() else None,
             "n": int(len(df)),
         }
+
+    def recent_delays(self, train_number: str, up_to: date, limit: int = 5) -> list[dict]:
+        """Return most recent per-day final delays strictly before `up_to`."""
+        if self.use_snowflake:  # pragma: no cover - env specific
+            query = (
+                f"SELECT TO_VARCHAR(SERVICE_DATE) AS service_date, MAX(DELAY_MINUTES) AS final_delay "
+                f"FROM {settings.SNOWFLAKE_SCHEMA_RAW}.STOP_OBSERVATIONS "
+                f"WHERE TRAIN_NUMBER=%s AND SERVICE_DATE < %s "
+                f"GROUP BY SERVICE_DATE "
+                f"ORDER BY SERVICE_DATE DESC "
+                f"LIMIT {int(limit)}"
+            )
+            with self._snowflake() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (str(train_number), str(up_to)))
+                    rows = cur.fetchall() or []
+            return [{"service_date": r[0], "final_delay_min": float(r[1]) if r[1] is not None else None} for r in rows]
+
+        with self._sqlite() as conn:
+            rows = conn.execute(
+                """
+                SELECT service_date, MAX(delay_minutes) AS final_delay
+                FROM stop_observations
+                WHERE train_number = ? AND service_date < ?
+                GROUP BY service_date
+                ORDER BY service_date DESC
+                LIMIT ?
+                """,
+                (str(train_number), up_to.isoformat(), int(limit)),
+            ).fetchall()
+        return [{"service_date": r[0], "final_delay_min": float(r[1]) if r[1] is not None else None} for r in rows]
+
+    def final_delay_history(self, train_number: str, up_to: date, lookback_days: int = 365) -> pd.DataFrame:
+        """Return per-day final delay history for a train for the lookback window strictly before up_to."""
+        if self.use_snowflake:  # pragma: no cover - env specific
+            query = (
+                f"SELECT TO_VARCHAR(SERVICE_DATE) AS service_date, MAX(DELAY_MINUTES) AS final_delay "
+                f"FROM {settings.SNOWFLAKE_SCHEMA_RAW}.STOP_OBSERVATIONS "
+                f"WHERE TRAIN_NUMBER = %s "
+                f"AND SERVICE_DATE < %s "
+                f"AND SERVICE_DATE >= DATEADD(day, -{int(lookback_days)}, %s) "
+                f"GROUP BY SERVICE_DATE "
+                f"ORDER BY SERVICE_DATE DESC"
+            )
+            with self._snowflake() as conn:
+                df = pd.read_sql(query, conn, params=(str(train_number), str(up_to), str(up_to)))
+            if df.empty:
+                return pd.DataFrame(columns=["service_date", "final_delay"])
+            df.columns = [str(c).lower() for c in df.columns]
+            df["service_date"] = pd.to_datetime(df["service_date"], errors="coerce").dt.date
+            df["final_delay"] = pd.to_numeric(df["final_delay"], errors="coerce")
+            return df.dropna(subset=["service_date", "final_delay"])
+
+        with self._sqlite() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT service_date, MAX(delay_minutes) AS final_delay
+                FROM stop_observations
+                WHERE train_number = ? AND service_date < ?
+                GROUP BY service_date
+                ORDER BY service_date DESC
+                """,
+                conn,
+                params=(str(train_number), up_to.isoformat()),
+            )
+        if df.empty:
+            return pd.DataFrame(columns=["service_date", "final_delay"])
+        df["service_date"] = pd.to_datetime(df["service_date"], errors="coerce").dt.date
+        df["final_delay"] = pd.to_numeric(df["final_delay"], errors="coerce")
+        return df.dropna(subset=["service_date", "final_delay"])
 
     # --- model registry ---
     def register_model(self, model_id: str, algo: str, mae: float, rmse: float,
@@ -565,7 +656,16 @@ class Storage:
         with self._sqlite() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute("SELECT * FROM stop_observations").fetchall()
-        return [dict(r) for r in rows]
+        def _sanitize(v):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            return v
+
+        cleaned: list[dict] = []
+        for r in rows:
+            d = dict(r)
+            cleaned.append({k: _sanitize(v) for k, v in d.items()})
+        return cleaned
 
     def delete_models(self) -> dict[str, int]:
         """Delete local model artifacts and clear registries (sqlite + snowflake if present)."""

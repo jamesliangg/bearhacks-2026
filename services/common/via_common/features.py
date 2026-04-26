@@ -6,6 +6,8 @@ from typing import Optional
 
 import pandas as pd
 
+from .routes import route_hash, route_id_for_train
+
 
 FEATURE_COLUMNS = [
     "dow",
@@ -13,8 +15,8 @@ FEATURE_COLUMNS = [
     "hour",
     "is_weekend",
     "train_number_hash",
+    "route_hash",
     "avg_delay_l30d",
-    "avg_delay_l30d_dow",
 ]
 
 
@@ -30,14 +32,15 @@ def build_online_features(
 ) -> dict:
     dt = pd.Timestamp(service_date)
     hour = scheduled_departure.hour if scheduled_departure else 8
+    rid = route_id_for_train(train_number)
     return {
         "dow": int(dt.dayofweek),
         "month": int(dt.month),
         "hour": int(hour),
         "is_weekend": int(dt.dayofweek >= 5),
         "train_number_hash": _train_hash(train_number),
+        "route_hash": route_hash(rid),
         "avg_delay_l30d": stats.get("avg_delay_l30d") or 0.0,
-        "avg_delay_l30d_dow": stats.get("avg_delay_l30d_dow") or stats.get("avg_delay_l30d") or 0.0,
     }
 
 
@@ -62,6 +65,7 @@ def build_training_frame(obs: pd.DataFrame) -> pd.DataFrame:
     runs["hour"] = 8  # placeholder; scheduled departure hour not always available
     runs["is_weekend"] = (runs["dow"] >= 5).astype(int)
     runs["train_number_hash"] = runs["train_number"].map(_train_hash)
+    runs["route_hash"] = runs["train_number"].map(lambda t: route_hash(route_id_for_train(str(t))))
 
     # Rolling 30-day mean for this train, excluding current row.
     runs["avg_delay_l30d"] = (
@@ -71,10 +75,4 @@ def build_training_frame(obs: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Rolling per-DOW mean.
-    runs["avg_delay_l30d_dow"] = (
-        runs.groupby(["train_number", "dow"])["target_delay_min"]
-        .transform(lambda s: s.shift(1).rolling(30, min_periods=1).mean())
-        .fillna(runs["avg_delay_l30d"])
-    )
-
     return runs[FEATURE_COLUMNS + ["target_delay_min"]]

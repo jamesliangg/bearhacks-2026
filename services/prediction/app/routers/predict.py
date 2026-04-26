@@ -6,8 +6,7 @@ import numpy as np
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.model_loader import loader
-from via_common.features import FEATURE_COLUMNS, build_online_features
+from via_common.features import build_online_features
 from via_common.schemas import (
     PredictionFactors,
     PredictionRequestItem,
@@ -25,6 +24,11 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     predictions: List[PredictionResult]
+
+class RecentDelaysResponse(BaseModel):
+    train_number: str
+    service_date: str
+    recent: list[dict]
 
 
 def _factor_breakdown(feature_row: dict, p50: float) -> PredictionFactors:
@@ -44,7 +48,8 @@ def _factor_breakdown(feature_row: dict, p50: float) -> PredictionFactors:
     elif feature_row["month"] in (6, 7, 8):
         weather_effect += 1.0
 
-    recent_trend_effect = float(feature_row["avg_delay_l30d"]) - 8.0
+    # Recent trend is entirely based on recent final delays for this train.
+    recent_trend_effect = float(feature_row["avg_delay_l30d"])
     route_effect = p50 - (weekday_effect + weather_effect + recent_trend_effect)
 
     return PredictionFactors(
@@ -57,25 +62,34 @@ def _factor_breakdown(feature_row: dict, p50: float) -> PredictionFactors:
 
 @router.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest) -> PredictResponse:
-    bundle = loader.get()
-    model = bundle["model"] if bundle else None
-    model_id = bundle["model_id"] if bundle else "heuristic"
+    model_id = "weighted_stats"
 
     out: list[PredictionResult] = []
     for item in req.items:
-        stats = storage.recent_delay_stats(item.train_number, item.service_date)
-        features = build_online_features(
-            item.train_number, item.service_date, item.scheduled_departure, stats,
-        )
-        x = np.array([[features[c] for c in FEATURE_COLUMNS]])
-        if model is not None:
-            p50 = float(model.predict(x)[0])
+        history = storage.final_delay_history(item.train_number, item.service_date, lookback_days=365)
+        delays = history["final_delay"].to_numpy(dtype=float) if not history.empty else np.array([])
+        if delays.size == 0:
+            p50 = 0.0
+            p90 = 5.0
+            avg = 0.0
         else:
-            # Heuristic fallback when no model has been trained yet.
-            p50 = float(features["avg_delay_l30d"] or 8.0)
+            # Recency weighting: last week > last month > rest of year.
+            svc = item.service_date
+            days_ago = np.array([(svc - d).days for d in history["service_date"]], dtype=float)
+            w = np.where(days_ago <= 7, 3.0, np.where(days_ago <= 30, 1.5, 1.0))
+            w = np.maximum(w, 0.0)
+            w = w / w.sum()
+            # Weighted average
+            avg = float(np.sum(w * delays))
+            # Approx weighted quantiles by sorting and cumulative weights
+            idx = np.argsort(delays)
+            d_sorted = delays[idx]
+            cw = np.cumsum(w[idx])
+            p50 = float(d_sorted[np.searchsorted(cw, 0.5, side="left")])
+            p90 = float(d_sorted[np.searchsorted(cw, 0.9, side="left")])
 
-        p50 = max(0.0, p50)
-        p90 = p50 * 1.8 + 5.0  # simple upper envelope
+        stats = {"avg_delay_l30d": avg}
+        features = build_online_features(item.train_number, item.service_date, item.scheduled_departure, stats)
 
         out.append(PredictionResult(
             train_number=item.train_number,
@@ -87,6 +101,14 @@ def predict(req: PredictRequest) -> PredictResponse:
             model_id=model_id,
         ))
     return PredictResponse(predictions=out)
+
+@router.get("/recent/{train_number}/{service_date}", response_model=RecentDelaysResponse)
+def recent(train_number: str, service_date: str) -> RecentDelaysResponse:
+    from datetime import date as _date
+
+    d = _date.fromisoformat(service_date)
+    recent_rows = storage.recent_delays(train_number, d, limit=5)
+    return RecentDelaysResponse(train_number=str(train_number), service_date=service_date, recent=recent_rows)
 
 
 @router.post("/admin/reload")

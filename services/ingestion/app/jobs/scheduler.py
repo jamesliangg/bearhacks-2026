@@ -35,6 +35,4 @@ def live_poll():
 
 def build_scheduler() -> AsyncIOScheduler:
     sched = AsyncIOScheduler(timezone="America/Toronto")
-    sched.add_job(nightly_backfill, "cron", hour=2, minute=15, id="nightly_backfill")
-    sched.add_job(live_poll, "interval", minutes=5, id="live_poll")
     return sched

@@ -2,9 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # In local dev, infra/.env is the canonical env file. Keep .env as a fallback.
+    model_config = SettingsConfigDict(env_file=("infra/.env", ".env"), extra="ignore")
 
-    USE_SNOWFLAKE: bool = False
+    USE_SNOWFLAKE: bool = True
     LOCAL_SQLITE_PATH: str = "./data/via_delays.sqlite"
 
     SNOWFLAKE_ACCOUNT: str | None = None
