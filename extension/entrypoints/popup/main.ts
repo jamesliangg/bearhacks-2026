@@ -1,7 +1,7 @@
 const urlInput = document.getElementById("url") as HTMLInputElement;
 const saveBtn = document.getElementById("save") as HTMLButtonElement;
 const testBtn = document.getElementById("test") as HTMLButtonElement;
-const status = document.getElementById("status") as HTMLDivElement;
+const statusEl = document.getElementById("status") as HTMLDivElement;
 
 (async () => {
   const r = await chrome.storage.sync.get("backendBaseUrl");
@@ -10,18 +10,18 @@ const status = document.getElementById("status") as HTMLDivElement;
 
 saveBtn.addEventListener("click", async () => {
   await chrome.storage.sync.set({ backendBaseUrl: urlInput.value.trim() });
-  status.textContent = "Saved.";
-  status.className = "ok";
+  statusEl.textContent = "Saved.";
+  statusEl.className = "ok";
 });
 
 testBtn.addEventListener("click", async () => {
   try {
     const r = await fetch(`${urlInput.value.trim()}/healthz`);
     const ok = r.ok;
-    status.textContent = ok ? "Reachable." : `HTTP ${r.status}`;
-    status.className = ok ? "ok" : "err";
+    statusEl.textContent = ok ? "Reachable." : `HTTP ${r.status}`;
+    statusEl.className = ok ? "ok" : "err";
   } catch (e) {
-    status.textContent = `Error: ${e}`;
-    status.className = "err";
+    statusEl.textContent = `Error: ${e}`;
+    statusEl.className = "err";
   }
 });

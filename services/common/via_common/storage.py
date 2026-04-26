@@ -273,6 +273,27 @@ class Storage:
             for r in rows
         ]
 
+    def has_stop_observations(self, train_number: str, service_date: date, source: str = "transitdocs") -> bool:
+        if self.use_snowflake:  # pragma: no cover - env specific
+            query = (
+                f"SELECT 1 FROM {settings.SNOWFLAKE_SCHEMA_RAW}.STOP_OBSERVATIONS "
+                f"WHERE TRAIN_NUMBER=%s AND SERVICE_DATE=%s AND SOURCE=%s "
+                f"LIMIT 1"
+            )
+            with self._snowflake() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (str(train_number), str(service_date), str(source)))
+                    return cur.fetchone() is not None
+
+        with self._sqlite() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM stop_observations "
+                "WHERE train_number=? AND service_date=? AND source=? "
+                "LIMIT 1",
+                (str(train_number), service_date.isoformat(), str(source)),
+            ).fetchone()
+        return row is not None
+
     # --- reads for training + online features ---
     def load_training_frame(self) -> pd.DataFrame:
         if self.use_snowflake:

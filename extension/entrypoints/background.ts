@@ -1,7 +1,7 @@
 import { defineBackground } from "wxt/sandbox";
 
 export default defineBackground(() => {
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg: any, _sender: any, sendResponse: any) => {
     if (msg?.type === "predict") {
       (async () => {
         try {

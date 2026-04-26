@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": ["entrypoints", "components", "lib", "wxt.config.ts"]
+  "include": ["env.d.ts", "entrypoints", "components", "lib", "wxt.config.ts"]
 }

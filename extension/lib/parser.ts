@@ -11,6 +11,7 @@ export interface ParsedTrip {
 }
 
 const TRAIN_RE = /\b(?:train|tr\.?|#)\s*0*(\d{1,4})\b/i;
+const HASH_TRAIN_RE = /#\s*0*(\d{1,4})\b/;
 
 function findDateInPage(): string {
   // Look for a query param ?date=YYYY-MM-DD or a visible ISO date.
@@ -25,24 +26,37 @@ function findDateInPage(): string {
 export function parseTrips(root: ParentNode = document): ParsedTrip[] {
   const candidates = Array.from(
     root.querySelectorAll<HTMLElement>(
-      '[data-testid*="trip"], [class*="trip"], [class*="segment"], [class*="result-row"], li[role="listitem"]'
+      [
+        ".train-service-content",
+        '[data-testid*="trip"]',
+        '[class*="trip"]',
+        '[class*="segment"]',
+        '[class*="result-row"]',
+        'li[role="listitem"]'
+      ].join(", ")
     )
   );
 
   const date = findDateInPage();
   const results: ParsedTrip[] = [];
   const seen = new WeakSet<HTMLElement>();
+  const seenKeys = new Set<string>();
 
   for (const el of candidates) {
     if (seen.has(el)) continue;
     const text = el.innerText || "";
-    const m = text.match(TRAIN_RE);
+    const m = text.match(HASH_TRAIN_RE) || text.match(TRAIN_RE);
     if (!m) continue;
     const trainNumber = m[1];
-    if (el.querySelector(".via-delay-badge")) continue;
+    const key = `${trainNumber}|${date}`;
+    if (seenKeys.has(key)) continue;
+    // If the closest train header already has our badge, skip.
+    const head = el.querySelector<HTMLElement>("#train-num-1, .trip-head");
+    if (head && head.parentElement?.querySelector(".via-delay-badge")) continue;
     seen.add(el);
+    seenKeys.add(key);
     results.push({
-      element: el,
+      element: (head?.parentElement as HTMLElement) || el,
       item: {
         train_number: trainNumber,
         service_date: date

@@ -2,16 +2,18 @@ import { SEVERITY_COLORS, severityFor } from "./severity";
 import type { Prediction } from "./api";
 
 export function renderBadge(host: HTMLElement, pred: Prediction) {
+  if (host.querySelector(":scope > .via-delay-badge, .via-delay-badge")) return;
   const sev = pred.severity || severityFor(pred.p50_delay_min);
   const colors = SEVERITY_COLORS[sev];
 
-  const wrap = document.createElement("div");
+  const wrap = document.createElement("span");
   wrap.className = "via-delay-badge";
   wrap.style.cssText = `
-    display:inline-flex;align-items:center;gap:6px;margin:6px 0 6px 8px;
+    display:inline-flex;align-items:center;gap:6px;margin-left:8px;
     padding:4px 8px;border-radius:999px;font:600 12px/1.2 system-ui,sans-serif;
     background:${colors.bg};color:${colors.fg};cursor:help;vertical-align:middle;
     box-shadow:0 1px 2px rgba(0,0,0,.15);
+    white-space:nowrap;
   `;
 
   const dot = document.createElement("span");
@@ -36,7 +38,14 @@ export function renderBadge(host: HTMLElement, pred: Prediction) {
   ].join("\n");
   wrap.title = tip;
 
-  host.prepend(wrap);
+  const trainHead = host.querySelector<HTMLElement>("#train-num-1, .trip-head");
+  if (trainHead) {
+    trainHead.style.display ||= "inline-flex";
+    trainHead.style.alignItems ||= "center";
+    trainHead.insertAdjacentElement("beforeend", wrap);
+  } else {
+    host.prepend(wrap);
+  }
 }
 
 function fmt(v: number): string {

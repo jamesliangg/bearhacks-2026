@@ -36,6 +36,8 @@ def _run(kind: str, fn, **kwargs) -> dict:
 
 @router.post("/historical/{train}/{service_date}")
 def scrape_historical(train: str, service_date: date):
+    if storage.has_stop_observations(train, service_date, source="transitdocs"):
+        return {"job_id": None, "kind": "historical", "rows": 0, "status": "skipped", "reason": "data_exists"}
     return _run("historical", transitdocs.scrape, train=train, service_date=service_date)
 
 
@@ -45,8 +47,14 @@ def backfill(req: BackfillRequest):
     from dateutil.rrule import rrule, DAILY
     for t in req.trains:
         for dt in rrule(DAILY, dtstart=req.start_date, until=req.end_date):
-            results.append(_run("historical", transitdocs.scrape,
-                                 train=t, service_date=dt.date()))
+            service_date = dt.date()
+            if storage.has_stop_observations(t, service_date, source="transitdocs"):
+                results.append(
+                    {"job_id": None, "kind": "historical", "rows": 0, "status": "skipped", "reason": "data_exists",
+                     "train": t, "service_date": service_date.isoformat()}
+                )
+                continue
+            results.append(_run("historical", transitdocs.scrape, train=t, service_date=service_date))
     return {"jobs": results}
 
 
